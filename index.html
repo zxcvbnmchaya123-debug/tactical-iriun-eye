@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌌 God-Mode Neon Spectrum Analyzer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+        body {
+            background: radial-gradient(circle at center, #0d0d1a 0%, #05050a 100%);
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        #ui-layer {
+            position: relative;
+            z-index: 10;
+            text-align: center;
+            pointer-events: none;
+        }
+        h1 {
+            color: #ffffff;
+            font-size: 2rem;
+            letter-spacing: 4px;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.6);
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            font-weight: 300;
+            opacity: 0.8;
+        }
+        button {
+            padding: 15px 35px;
+            font-size: 1rem;
+            background: linear-gradient(45deg, #00f2fe, #4facfe);
+            border: none;
+            border-radius: 50px;
+            color: white;
+            cursor: pointer;
+            pointer-events: auto;
+            font-weight: bold;
+            letter-spacing: 2px;
+            box-shadow: 0 0 30px rgba(0, 242, 254, 0.4);
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 40px rgba(79, 172, 254, 0.8);
+        }
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <h1 id="title">🌌 God-Mode Audio Analyzer</h1>
+        <button id="start-btn">เปิดระบบดักจับเสียง</button>
+    </div>
+
+    <canvas id="visualizer"></canvas>
+
+    <script>
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('start-btn');
+        const uiLayer = document.getElementById('ui-layer');
+
+        let audioCtx, analyser, dataArray, bufferLength;
+        let smoothHeights = [];
+        let peakHeights = [];
+        let colorShift = 0;
+
+        // ปรับขนาดหน้าจอให้เต็มและคมชัดแบบ Dynamic
+        function resizeCanvas() {
+            canvas.width = window.innerWidth * window.devicePixelRatio;
+            canvas.height = window.innerHeight * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // เปิดระบบตรวจจับสัญญาณเสียงระดับเทพ
+        startBtn.addEventListener('click', async () => {
+            try {
+                // ขอสิทธิ์เข้าถึงอุปกรณ์เสียง (เลือกระบบ Stereo Mix หรือเปิดเพลงผ่านไมค์)
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                
+                uiLayer.classList.add('hidden'); // ซ่อนปุ่มเมื่อระบบรันแล้ว
+
+                // เริ่มทำงานชุดประมวลผลเสียง Web Audio API [1]
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioCtx.createMediaStreamSource(stream);
+                analyser = audioCtx.createAnalyser();
+
+                // ตั้งค่าความละเอียด FFT (Fast Fourier Transform) ขั้นสูง [1]
+                analyser.fftSize = 512; 
+                bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+
+                // สร้าง Array เก็บประวัติความสูงเพื่อทำระบบความเคลื่อนไหวพริ้วไหว (Smoothing Buffer)
+                smoothHeights = new Array(bufferLength).fill(0);
+                peakHeights = new Array(bufferLength).fill(0);
+
+                renderEngine();
+            } catch (err) {
+                alert("❌ กรุณาอนุญาตการเข้าถึงไมโครโฟน/ระบบเสียง เพื่อให้โค้ดทำงานได้นะครับ!\n" + err);
+            }
+        });
+
+        // 🧠 ขุมพลังกราฟิกและคณิตศาสตร์คลื่นเสียงเรียลไทม์
+        function renderEngine() {
+            requestAnimationFrame(renderEngine);
+
+            // ดึงข้อมูลสัญญาณคลื่นความถี่ในเสี้ยววินาทีนั้นออกมา [1]
+            analyser.getByteFrequencyData(dataArray);
+
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            // เทคนิคการเคลียร์จอภาพแบบมีหางแสงเรืองรอง (Motion Blur Effect)
+            ctx.fillStyle = 'rgba(5, 5, 10, 0.15)';
+            ctx.fillRect(0, 0, width, height);
+
+            colorShift += 0.3; // ความเร็วในการหมุนวนของสีรุ้งนีออน
+
+            // ตัดเฉพาะย่านความถี่ที่หูมนุษย์ฟังและเต้นตาม (ไม่เอาส่วนที่เงียบเกินไปปลายสาย)
+            const activeBins = Math.floor(bufferLength * 0.85); 
+            const barWidth = (width / activeBins);
+
+            for (let i = 0; i < activeBins; i++) {
+                // คำนวณความถี่ล็อกการิทึม ให้เสียงเบสกระทุ้งเด่นชัดฝั่งซ้าย
+                let rawValue = dataArray[i];
+                
+                // กระบวนการ Linear Interpolation (Lerp) เพื่อความนุ่มนวลระดับภาพยนตร์
+                smoothHeights[i] += (rawValue - smoothHeights[i]) * 0.18;
+                
+                // คำนวณความสูงแท่งคลื่นเทียบกับสเกลหน้าจอ
+                let barHeight = (smoothHeights[i] / 255) * (height * 0.65);
+
+                // ระบบฟิสิกส์จุดยอดตกลงตามแรงโน้มถ่วง (Gravity Peak Dots)
+                if (barHeight > peakHeights[i]) {
+                    peakHeights[i] = barHeight;
+                } else {
+                    peakHeights[i] -= 2.5; // ความเร็วตอนร่วงลงมา
+                    if (peakHeights[i] < 0) peakHeights[i] = 0;
+                }
+
+                // 🌈 สร้างเฉดสีรุ้ง Holographic เคลื่อนไหวตามค่าความถี่และจังหวะเวลา
+                let hue = (i / activeBins * 360 + colorShift) % 360;
+                
+                let x = i * barWidth;
+                let y = height - barHeight - 40; // ยกฐานความถี่ลอยเหนือน้ำเล็กน้อย
+
+                // วาดแท่งคลื่นความถี่หลักแบบนีออนเรืองแสง
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = `hsla(${hue}, 100%, 50%, 0.6)`;
+                
+                // สร้างความหนาบางของแท่งตามเสียงเพื่อมิติที่นุ่มตา
+                ctx.fillStyle = `hsla(${hue}, 100%, 50%, 0.85)`;
+                
+                // วาดกล่องทรงโค้งมนมนต์สเน่ห์สไตล์ Cyberpunk
+                beginPathRadiusRect(ctx, x + 1, y, barWidth - 2, barHeight, 5);
+
+                // วาดจุดยอดเม็ดแสง (Peak Dot) เหนือแท่งคลื่น
+                let peakY = height - peakHeights[i] - 46;
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowColor = '#ffffff';
+                ctx.shadowBlur = 10;
+                if (peakY < height - 46) {
+                    ctx.fillRect(x + 1, peakY, barWidth - 2, 3);
+                }
+            }
+            
+            // ล้างค่า Shadow ทิ้งเพื่อไม่ให้ระบบวาดส่วนอื่นกระตุกช้าลง
+            ctx.shadowBlur = 0;
+        }
+
+        // ฟังก์ชันเสริมสำหรับวาดแท่งแบบโค้งมน (Rounded Corners Rect)
+        function beginPathRadiusRect(ctx, x, y, width, height, radius) {
+            if (height < radius) radius = height;
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height);
+            ctx.lineTo(x, y + height);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+            ctx.fill();
+        }
+    </script>
+</body>
+</html>
